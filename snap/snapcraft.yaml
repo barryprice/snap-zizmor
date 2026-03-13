@@ -1,4 +1,4 @@
-name: zizmor
+name: zizmor-bp
 base: core24
 adopt-info: zizmor
 summary:  Static analysis for GitHub Actions 
