@@ -8,3 +8,5 @@ This is an unofficial snap package which builds from the upstream repository.
 Upstream: https://github.com/zizmorcore/zizmor.git
 
 Snap recipe: https://github.com/barryprice/snap-zizmor.git
+
+Snap: https://snapcraft.io/zizmor-bp
