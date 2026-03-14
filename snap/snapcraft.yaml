@@ -1,21 +1,34 @@
-name: zizmor-bp
+name: zizmor
+title: zizmor
+contact:
+  - https://github.com/barryprice
+issues:
+  - https://github.com/barryprice/snap-zizmor/issues
+source-code:
+  - https://github.com/zizmorcore/zizmor
+website:
+  - https://zizmor.sh/
+license: MIT
 base: core24
 adopt-info: zizmor
 summary:  Static analysis for GitHub Actions 
 description: |
   zizmor is a static analysis tool for GitHub Actions. It can find and fix many
   common security issues in typical GitHub Actions CI/CD setups.
+  This is an third-party/community build, approved by upstream here.
+  https://github.com/zizmorcore/zizmor/issues/1760
 grade: stable
 confinement: strict
 
 apps:
   zizmor:
-    command: bin/zizmor
+    command: zizmor
     plugs: [home, network]
 
 parts:
   zizmor:
-    plugin: python
+    plugin: rust
+    rust-channel: stable
     source: https://github.com/zizmorcore/zizmor.git
     override-build: |
       # build the latest tagged release
