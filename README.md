@@ -3,7 +3,8 @@
 zizmor is a static analysis tool for GitHub Actions. It can find and fix many
 common security issues in typical GitHub Actions CI/CD setups.
 
-This is an unofficial snap package which builds from the upstream repository.
+This is an third-party/community build, approved by upstream here.
+https://github.com/zizmorcore/zizmor/issues/1760
 
 To call it as plain `zizmor`, run:
 
