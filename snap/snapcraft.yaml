@@ -32,7 +32,7 @@ parts:
     source: https://github.com/zizmorcore/zizmor.git
     override-build: |
       # build the latest tagged release
-      latest_tag=$(git tag --list | grep '^v' | sort -V | tail -1)
+      latest_tag=$(git tag --list | grep '^v' | grep -v '\-rc' | sort -V | tail -1)
       git checkout ${latest_tag?}
       craftctl set version=$(git describe --tags)
       craftctl default
