@@ -9,7 +9,7 @@ source-code:
 website:
   - https://zizmor.sh/
 license: MIT
-base: core24
+base: core26
 adopt-info: zizmor
 summary:  Static analysis for GitHub Actions 
 description: |
