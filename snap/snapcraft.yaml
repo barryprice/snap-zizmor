@@ -1,5 +1,20 @@
 name: zizmor
 title: zizmor
+summary: Static analysis for GitHub Actions
+description: |
+  zizmor is a static analysis tool for GitHub Actions. It can find and fix many
+  common security issues in typical GitHub Actions CI/CD setups.
+
+  This is a third-party/community build, approved by upstream here:
+  https://github.com/zizmorcore/zizmor/issues/1760
+
+  Under strict confinement zizmor reads repositories under your home directory.
+  Top-level hidden directories (e.g. ~/.local/...) are not covered by the home
+  interface. For a checkout on removable media:
+
+  sudo snap connect zizmor:removable-media
+license: MIT
+
 contact:
   - https://github.com/barryprice
 issues:
@@ -8,31 +23,134 @@ source-code:
   - https://github.com/zizmorcore/zizmor
 website:
   - https://zizmor.sh/
-license: MIT
-base: core26
+
 adopt-info: zizmor
-summary:  Static analysis for GitHub Actions 
-description: |
-  zizmor is a static analysis tool for GitHub Actions. It can find and fix many
-  common security issues in typical GitHub Actions CI/CD setups.
-  This is an third-party/community build, approved by upstream here.
-  https://github.com/zizmorcore/zizmor/issues/1760
+base: core26
 grade: stable
 confinement: strict
 
+platforms:
+  amd64:
+  arm64:
+  armhf:
+  ppc64el:
+  riscv64:
+  s390x:
+
 apps:
   zizmor:
-    command: zizmor
-    plugs: [home, network]
+    command: bin/zizmor
+    plugs: [home, network, removable-media]
 
 parts:
   zizmor:
     plugin: rust
-    rust-channel: stable
     source: https://github.com/zizmorcore/zizmor.git
-    override-build: |
-      # build the latest tagged release
-      latest_tag=$(git tag --list | grep '^v' | grep -v '\-rc' | sort -V | tail -1)
-      git checkout ${latest_tag?}
-      craftctl set version=$(git describe --tags)
+    source-type: git
+    # Build only the binary crate. The workspace root is a virtual manifest, so
+    # with the default rust-path the plugin can't `cargo read-manifest` it and
+    # falls back to `cargo build --workspace --release` - no --locked, every
+    # member crate built, and the binary installed at the root of the part.
+    # Naming the crate takes the `cargo install -f --locked --path ... --root`
+    # path instead: upstream's committed Cargo.lock is honoured, only zizmor is
+    # built, and the binary lands in bin/ like every other snap here.
+    rust-path: [crates/zizmor]
+    rust-channel: stable
+    # Upstream's rust-toolchain.toml pins an exact toolchain plus rustfmt and
+    # clippy components this build never uses, and rustup's proxies honour that
+    # file at build time whatever rust-channel says - so two toolchains get
+    # downloaded and the effective compiler silently changes on every upstream
+    # bump. Ignoring the file forces RUSTUP_TOOLCHAIN=stable; zizmor's MSRV
+    # (rust-version = 1.97.0 at v1.29.0) is well below current stable.
+    rust-ignore-toolchain-file: true
+    override-pull: |
       craftctl default
+
+      # Pinned upstream release tag. Renovate bumps this line automatically
+      # when zizmorcore/zizmor publishes a new release (see renovate.json).
+      # renovate: datasource=github-releases depName=zizmorcore/zizmor
+      zizmor_version="v1.29.0"
+
+      # Ensure the pinned tag exists locally (shallow clones may omit it),
+      # then build exactly that release.
+      git fetch --tags --force origin
+      git checkout --detach "${zizmor_version}"
+
+      # Snap versions conventionally omit the leading "v" from the release tag.
+      craftctl set version="${zizmor_version#v}"
+    override-prime: |
+      craftctl default
+
+      # Everything below runs against ${CRAFT_PRIME}, i.e. the exact tree that
+      # gets packed, so apps.zizmor.command is proven to resolve too.
+      zizmor="${CRAFT_PRIME}/bin/zizmor"
+
+      # clap prints "<bin> <CARGO_PKG_VERSION>", which upstream inherits from
+      # the workspace version - so this ties the packed binary back to the
+      # pinned tag rather than trusting the checkout.
+      expected="zizmor $(craftctl get version)"
+      reported="$("${zizmor}" --version)"
+      if [ "${reported}" != "${expected}" ]; then
+          printf 'expected version %s, got %s\n' "${expected}" "${reported}" >&2
+          exit 1
+      fi
+
+      smoke_dir="$(mktemp -d)"
+      cat > "${smoke_dir}/vulnerable.yml" <<'EOF'
+      on: issues
+      permissions: {}
+      jobs:
+        echo:
+          runs-on: ubuntu-latest
+          steps:
+            - run: echo "${{ github.event.issue.title }}"
+      EOF
+      cat > "${smoke_dir}/clean.yml" <<'EOF'
+      on: push
+      permissions: {}
+      jobs:
+        echo:
+          runs-on: ubuntu-latest
+          steps:
+            - run: echo hello
+      EOF
+
+      # A run: step interpolating an attacker-controlled context is the
+      # template-injection audit's textbook case. It must be reported, and the
+      # exit code must land in zizmor's 11-14 "findings" band (14/high today;
+      # the band keeps the gate working if upstream re-grades the severity).
+      rc=0
+      findings="$("${zizmor}" --offline --no-progress --color=never \
+          "${smoke_dir}/vulnerable.yml" 2>&1)" || rc=$?
+      if [ "${rc}" -lt 11 ] || [ "${rc}" -gt 14 ]; then
+          printf 'expected a findings exit code (11-14), got %s:\n%s\n' "${rc}" "${findings}" >&2
+          exit 1
+      fi
+      case "${findings}" in
+          *template-injection*) ;;
+          *)
+              printf 'template-injection was not reported:\n%s\n' "${findings}" >&2
+              exit 1
+              ;;
+      esac
+
+      # ... and a workflow with nothing to report must exit clean, so the gate
+      # also fails on an audit that fires indiscriminately.
+      rc=0
+      clean="$("${zizmor}" --offline --no-progress --color=never \
+          "${smoke_dir}/clean.yml" 2>&1)" || rc=$?
+      if [ "${rc}" -ne 0 ]; then
+          printf 'clean workflow exited %s:\n%s\n' "${rc}" "${clean}" >&2
+          exit 1
+      fi
+      rm -rf "${smoke_dir}"
+
+      # Dogfood: audit this repo's own workflows with the binary being packed.
+      rc=0
+      own="$("${zizmor}" --offline --no-progress --color=never \
+          "${CRAFT_PROJECT_DIR}/.github/workflows/snap.yml" \
+          "${CRAFT_PROJECT_DIR}/.github/workflows/zizmor.yml" 2>&1)" || rc=$?
+      if [ "${rc}" -ne 0 ]; then
+          printf 'zizmor reported findings in this repo (exit %s):\n%s\n' "${rc}" "${own}" >&2
+          exit 1
+      fi
