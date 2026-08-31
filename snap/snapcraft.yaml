@@ -69,7 +69,7 @@ parts:
       # Pinned upstream release tag. Renovate bumps this line automatically
       # when zizmorcore/zizmor publishes a new release (see renovate.json).
       # renovate: datasource=github-releases depName=zizmorcore/zizmor
-      zizmor_version="v1.29.0"
+      zizmor_version="v1.30.0"
 
       # Ensure the pinned tag exists locally (shallow clones may omit it),
       # then build exactly that release.
